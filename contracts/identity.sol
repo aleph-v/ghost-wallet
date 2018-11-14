@@ -1,17 +1,14 @@
 pragma solidity ^0.4.25;
 
-import "./BigNum.sol";
+import "./p256.sol";
 
-contract idenity{
-    using BigNumber for *;
+contract idenity is p256Lib{
 
     mapping(address => bool) isOwner;
-    instance publicExponent;
-    instance modulus;
+    bytes ownerKey;
 
-    constructor(bytes _exponet, uint _exponetLength, bytes _modulus, uint _modulusLegth) public{
-      publicExponent = _exponet._new(false, _exponetLength);
-      modulus = _modulus._new(false, _modulusLength);
+    constructor(bytes _ownerKey) public{
+      ownerKey = _ownerKey;
     }
 
     //@Dev - Add an account which can can access the idenity
@@ -24,10 +21,9 @@ contract idenity{
     function verify(address _owner) external view{
         require(isOwner[_owner]);
     }
-    //@Dev - The signature should be the RSA [openPGP/other] signature of the keccak256 hash of the address to be given access
-    function hardwareRootAccess(bytes32 _pubHash, bytes _sig, uint _sigBitlen) external view{
-      instance memory signature = _sig._new(false, _sigBitlen);
-      instance memory result = signature.prepare_modexp(exponet, modulus);
+    //@Dev - The signature will be a NIST P-256 signature of the raw data signature from the U2F FIDO standard
+    function hardwareRootAccess(uint32 _counter, bytes _sig) external view{
+
        
     }
 
