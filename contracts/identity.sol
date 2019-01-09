@@ -1,4 +1,4 @@
-pragma solidity ^0.4.24;
+/* pragma solidity ^0.5.0;
 
 import "./p256.sol";
 
@@ -32,9 +32,9 @@ contract idenity is p256Lib{
     }
 
     //@Dev- Proxy forwarding for the idenity
-    function forward(address _to, bytes _calldata) public payable {
+    function forward(address payable _to, bytes memory _calldata) public payable {
       require(isOwner[msg.sender]);
-      require(_to.call.value(msg.value)(_calldata));
+      _to.call.value(msg.value)(_calldata);
     }
 
     //@Dev - Add an account which can can access the idenity
@@ -77,4 +77,4 @@ contract idenity is p256Lib{
         }
         return(false);
     }
-}
+} */
