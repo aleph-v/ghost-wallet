@@ -20,8 +20,8 @@
        version: "^0.5.2",
        settings: {
          optimizer: {
-           enabled: false, // Default: false
-           runs: 1000     // Default: 200
+           enabled: true, // Default: false
+           runs: 2000     // Default: 200
          }
        }
      }
