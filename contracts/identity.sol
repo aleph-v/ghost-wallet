@@ -3,9 +3,9 @@ pragma solidity ^0.5.1;
 import "./p256.sol";
 
 //@Dev - This contract when deployed creates an idenity which regards any device capable of generating UF2 tokens as the holder of the idenity
-//@Dev - It allows yubi keys, some models of cell phone, and other devices to sign transactions and grant access to the identity to ethereum accounts
+//@Dev - It allows yubi keys and other devices to sign transactions and grant access to the identity to ethereum accounts
 //@Dev - Moreover it implements a full metatransactionl system which allows any ethereum account validated for this idenity to produce a signed message which when delateged to this account will produce a call from the identity
-//@Dev - Since the meta transactional call is generic this contract can natively hold all forms of token and preform any action an ethereum account can preform [except with those contracts which spesificaly do not allow contract interaction]
+//@Dev - Since the meta transactional call is generic this contract can natively hold all forms of token and preform any action a regular ethereum account can preform [except with those contracts which spesificaly do not allow contract interaction]
 //@Dev - It allows timestamping of ethereum address so that they expire [like access tokens to web2 websites]
 //@Dev - To enable a network of senders to not worry about front running it also allows locking of metatransactionl methods to a fufiller address until the lock expires
 
@@ -79,11 +79,11 @@ contract idenity is p256Lib{
     }
 
     //@Dev - This function allows the creation of a one time transaction via UF2 token, instead of authorizing an address [Note because spec256r is non native this will be much more expensive for multiple transactions from an address]
-    function oneTimeCall(address payable _to, uint _value, bytes calldata,vuint fee, bytes4 _counter, bytes32 applicationParam,  uint r, uint s) external returns(bool){
+    function oneTimeCall(address payable _to, uint _value, bytes calldata _calldata, uint fee, bytes4 _counter, bytes32 applicationParam,  uint r, uint s) external returns(bool){
       require(uint32(_counter) > uint32(counter));
       require(isIn(validApplicationId, applicationParam));
 
-      bytes32 hash = keccak256(abi.encodePacked(address(this), ONETIME, _to, fee, calldata));
+      bytes32 hash = keccak256(abi.encodePacked(address(this), ONETIME, _value, _to, fee, _calldata));
       hash = sha256(abi.encodePacked(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
       //Use sha256 since UF2 doesn't have keccak256 as an option
 
@@ -97,22 +97,30 @@ contract idenity is p256Lib{
     }
 
     //@Dev - Extension of one time call locked to a single fufiller until time 'lockExpires'
-    function oneTimeCall(address payable _to, uint _value, bytes calldata, uint fee, bytes4 _counter, bytes32 applicationParam,  uint r, uint s, address fufiller, uint lockExpire) external returns(bool){
+    function oneTimeCall(address payable _to, uint _value, bytes calldata _calldata, uint fee, bytes4 _counter, bytes32 applicationParam,  uint r, uint s, address fufiller, uint lockExpire) external returns(bool){
       require((msg.sender == fufiller) || (now > lockExpire));
       require(uint32(_counter) > uint32(counter));
+      counter = _counter;
       require(isIn(validApplicationId, applicationParam));
 
-      bytes32 hash = keccak256(abi.encodePacked(address(this), LOCKED_ONETIME, fufiller, lockExpire, _to, fee, calldata));
-      hash = sha256(abi.encodePacked(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
-      //Use sha256 since UF2 doesn't have keccak256 as an option
+      if(oneTimeHashLock(fufiller, lockExpire, _value, _to, fee, _calldata, r, s, applicationParam)){
 
-      require(verify(uint256(hash),r,s,public_qx, public_qy)); //Use the p256 library to check the spec256r/NIST 256 sig
+        counter = _counter;
+        (bool success, ) = _to.call.value(_value)(_calldata); //Attempts the call requested
 
-      counter = _counter;
-      (bool success, ) = _to.call.value(_value)(_calldata); //Attempts the call requested
+        (msg.sender).transfer(fee); //Transfer gas repayment to sender
+        return(success);
+      } else{
+          revert();
+      }
+    }
+    //@Dev - This internal function helps avoid stack errors
+    function oneTimeHashLock(address _fufiller, uint _lockExpire, uint _value, address _to, uint _fee, bytes memory _calldata, uint r, uint s, bytes32 applicationParam) internal returns(bool){
+        bytes32 hash = keccak256(abi.encodePacked(address(this), LOCKED_ONETIME, _value, _fufiller, _lockExpire, _to, _fee, _calldata));
+        hash = sha256(abi.encodePacked(applicationParam, userPresance, counter, hash)); //TODO check against UF2 packing
+        //Use sha256 since UF2 doesn't have keccak256 as an option
 
-      (msg.sender).transfer(fee); //Transfer gas repayment to sender
-      return(success);
+       return(verify(uint256(hash),r,s,public_qx, public_qy)); //Use the p256 library to check the spec256r/NIST 256 sig
     }
 
     //@Dev- Proxy forwarding for the idenity
@@ -121,11 +129,12 @@ contract idenity is p256Lib{
       (bool success, ) = _to.call.value(_value)(_calldata); //Attempts the call requested
       require(success); // Checks that the data is valid
     }
+
     //@Overload the meta transactional forward method
-    function forward(address payable _to, uint _value, bytes memory _calldata, bytes32 salt, uint fee, bytes memory signature) public payable {
-      bytes32 hash = keccak256(abi.encodePacked(address(this), fee, CALL, salt, _to, value, _calldata)); //Calculates the hash to be signed
+    function forward(address payable _to, uint _value, bytes memory _calldata, bytes32 salt, uint fee, bytes memory signature) public payable returns(bool) {
+      bytes32 hash = keccak256(abi.encodePacked(address(this), fee, CALL, salt, _value, _to, _calldata)); //Calculates the hash to be signed
       address sender = recover_spec256(hash, signature); //Calls the ethereum version of the recover library
-      require(checkOwnership(signer));// Checks that the signer is the owner
+      require(checkOwnership(sender));// Checks that the signer is the owner
       require(!used[hash]); // Checks that the hash hasn't been burnt
 
       (bool success, ) = _to.call.value(_value)(_calldata); //Calls the _to with the value and call data inputed
@@ -135,12 +144,12 @@ contract idenity is p256Lib{
     }
 
     //@Overload the meta transactional forward method, with locking for fulfiller address [avoiding race conditions]
-    function forward(address payable _to, uint _value, bytes memory _calldata, bytes32 salt, uint fee, bytes memory signature, address fufiller, uint lockExpire) public payable {
-      require((msg.sender = fufiller) || (now > lockExpire));
+    function forward(address payable _to, uint _value, bytes memory _calldata, bytes32 salt, uint fee, bytes memory signature, address fufiller, uint lockExpire) public payable returns(bool) {
+      require((msg.sender == fufiller) || (now > lockExpire));
 
-      bytes32 hash = keccak256(abi.encodePacked(address(this), fee, LOCKED_CALL, salt, fufiller, lockExpire, _to, value, _calldata)); //Calculates the hash to be signed
+      bytes32 hash = keccak256(abi.encodePacked(address(this), fee, LOCKED_CALL, salt, fufiller, lockExpire, _to, _value, _calldata)); //Calculates the hash to be signed
       address sender = recover_spec256(hash, signature); //Calls the ethereum version of the recover library
-      require(checkOwnership(signer));// Checks that the signer is the owner
+      require(checkOwnership(sender));// Checks that the signer is the owner
       require(!used[hash]); // Checks that the hash hasn't been burnt
 
       (bool success, ) = _to.call.value(_value)(_calldata); //Calls the _to with the value and call data inputed
@@ -148,6 +157,7 @@ contract idenity is p256Lib{
       (msg.sender).transfer(fee); // Sends the fee
       return(success); // Returns whether or not the call is successful
     }
+
     //@Dev - Add an account which can can access the idenity
     function addAccount(address _add, uint timestamp) external{
       require(checkOwnership(msg.sender));
@@ -176,7 +186,7 @@ contract idenity is p256Lib{
 
     //@Dev - Add an account which can can access the idenity, overloaded meta transactional method and locked to one fufiller till time 'lockExpire'
     function addAccount(address _add, uint timestamp, bytes32 salt, uint fee, bytes calldata signature, address fufiller, uint lockExpire) external{
-      require((msg.sender == fullfiller) || (now > lockExpire));
+      require((msg.sender == fufiller) || (now > lockExpire));
 
       bytes32 hash = keccak256(abi.encodePacked(address(this), fee, LOCKED_ADD, salt, fufiller, lockExpire, _add, timestamp)); //Hashes the needed data for the transaciton
       address signer = recover_spec256(hash, signature); //Uses the ethereum address recovery method
@@ -233,7 +243,7 @@ contract idenity is p256Lib{
 
     //@Dev - Allows contracts to check if from is in the same idenity as owner
     function checkAddress(address _owner) external view{
-        require(checkOwnership[_owner]);
+        require(checkOwnership(_owner));
     }
 
     //@Dev - Unsorted array search, note that this array should never hold more than 5 elements
@@ -246,8 +256,8 @@ contract idenity is p256Lib{
         return(false);
     }
 
-    function checkOwnership(address proposed) private pure returns(bool){
-      return (isOwner[proposed])&&(timelock[proposed] > now || timelock[proposed] = 0)
+    function checkOwnership(address proposed) private view returns(bool){
+      return (isOwner[proposed])&&(timelock[proposed] > now || timelock[proposed] == 0);
     }
 
     //@Dev - Signature Recovery
