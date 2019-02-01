@@ -3,9 +3,9 @@ pragma solidity ^0.5.1;
 import "./p256.sol";
 
 //@Dev - This contract when deployed creates an idenity which regards any device capable of generating UF2 tokens as the holder of the idenity
-//@Dev - It allows yubi keys and other devices to sign transactions and grant access to the identity to ethereum accounts
+//@Dev - It allows yubi keys, some models of cell phone, and other devices to sign transactions and grant access to the identity to ethereum accounts
 //@Dev - Moreover it implements a full metatransactionl system which allows any ethereum account validated for this idenity to produce a signed message which when delateged to this account will produce a call from the identity
-//@Dev - Since the meta transactional call is generic this contract can natively hold all forms of token and preform any action a regular ethereum account can preform [except with those contracts which spesificaly do not allow contract interaction]
+//@Dev - Since the meta transactional call is generic this contract can natively hold all forms of token and preform any action an ethereum account can preform [except with those contracts which spesificaly do not allow contract interaction]
 //@Dev - It allows timestamping of ethereum address so that they expire [like access tokens to web2 websites]
 //@Dev - To enable a network of senders to not worry about front running it also allows locking of metatransactionl methods to a fufiller address until the lock expires
 
@@ -48,7 +48,7 @@ contract idenity is p256Lib{
         require(isIn(validApplicationId, applicationParam));
 
         bytes32 hash = keccak256(abi.encodePacked(address(this), NEW, newOwner, timestamp, fee));
-        hash = sha256(abi.encodePacked(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
+        hash = sha256(uf2Packed(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
         //Use sha256 since UF2 doesn't have keccak256 as an option
 
         require(verify(uint256(hash),r,s,public_qx, public_qy)); //Use the p256 library to check the spec256r/NIST 256 sig
@@ -67,7 +67,7 @@ contract idenity is p256Lib{
         require(isIn(validApplicationId, applicationParam));
 
         bytes32 hash = keccak256(abi.encodePacked(address(this), LOCKED_NEW, fufiller, lockExpire, newOwner, timestamp, fee));
-        hash = sha256(abi.encodePacked(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
+        hash = sha256(uf2Packed(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
         //Use sha256 since UF2 doesn't have keccak256 as an option
 
         require(verify(uint256(hash),r,s,public_qx, public_qy)); //Use the p256 library to check the spec256r/NIST 256 sig
@@ -84,7 +84,7 @@ contract idenity is p256Lib{
       require(isIn(validApplicationId, applicationParam));
 
       bytes32 hash = keccak256(abi.encodePacked(address(this), ONETIME, _value, _to, fee, _calldata));
-      hash = sha256(abi.encodePacked(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
+      hash = sha256(uf2Packed(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
       //Use sha256 since UF2 doesn't have keccak256 as an option
 
       require(verify(uint256(hash),r,s,public_qx, public_qy)); //Use the p256 library to check the spec256r/NIST 256 sig
@@ -117,7 +117,7 @@ contract idenity is p256Lib{
     //@Dev - This internal function helps avoid stack errors
     function oneTimeHashLock(address _fufiller, uint _lockExpire, uint _value, address _to, uint _fee, bytes memory _calldata, uint r, uint s, bytes32 applicationParam) internal returns(bool){
         bytes32 hash = keccak256(abi.encodePacked(address(this), LOCKED_ONETIME, _value, _fufiller, _lockExpire, _to, _fee, _calldata));
-        hash = sha256(abi.encodePacked(applicationParam, userPresance, counter, hash)); //TODO check against UF2 packing
+        hash = sha256(uf2Packed(applicationParam, userPresance, counter, hash)); //TODO check against UF2 packing
         //Use sha256 since UF2 doesn't have keccak256 as an option
 
        return(verify(uint256(hash),r,s,public_qx, public_qy)); //Use the p256 library to check the spec256r/NIST 256 sig
@@ -254,6 +254,16 @@ contract idenity is p256Lib{
             }
         }
         return(false);
+    }
+
+    function uf2Packed(bytes32 _applicationParam, byte _userPresance, bytes4 _counter, bytes32 _hash) private pure returns(bytes memory _b){
+        assembly{
+            mstore(_b, 0x45)
+            mstore(add(_b,0x20), _applicationParam)
+            mstore(add(_b, 0x40), _userPresance)
+            mstore(add(_b,0x41), _counter)
+            mstore(add(_b,0x45), _hash)
+        }
     }
 
     function checkOwnership(address proposed) private view returns(bool){
