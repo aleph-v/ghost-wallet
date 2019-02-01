@@ -15,7 +15,7 @@ contract idenity is p256Lib{
     mapping(address => bool) public isOwner;
     uint256 public public_qx; //The coordinates of the registered public key
     uint256 public public_qy;
-    bytes32[] public validApplicationId;
+    bytes32 public validApplicationId;
     bytes4 public counter; //We use bytes4 since FIDO UF2 uses big endian for its counter
     byte constant public userPresance = 0x01;
     mapping(address => uint) public timelock; // Contains the experation time of an address, set to zero for no experation
@@ -37,7 +37,7 @@ contract idenity is p256Lib{
     constructor(uint256 _public_qx, uint _public_qy, bytes32 applicationId, bytes4 _counter) public{
         public_qx = _public_qx;
         public_qy = _public_qy;
-        validApplicationId.push(applicationId);
+        validApplicationId == applicationId;
         counter = _counter;
         isOwner[msg.sender] = true; //We will assume that the person constructing the identity is the user, a purely meta transactional model may not do this
     }
@@ -45,7 +45,7 @@ contract idenity is p256Lib{
     //@Dev - The signature will be a NIST P-256 signature of the raw data signature from the U2F FIDO standard
     function hardwareRootAccess(bytes4 _counter, bytes32 applicationParam,  uint r, uint s, uint fee, address newOwner, uint timestamp) external {
         require(uint32(_counter) > uint32(counter));
-        require(isIn(validApplicationId, applicationParam));
+        require(validApplicationId == applicationParam);
 
         bytes32 hash = keccak256(abi.encodePacked(address(this), NEW, newOwner, timestamp, fee));
         hash = sha256(uf2Packed(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
@@ -64,7 +64,7 @@ contract idenity is p256Lib{
         require((msg.sender == fufiller) || (now > lockExpire));
 
         require(uint32(_counter) > uint32(counter));
-        require(isIn(validApplicationId, applicationParam));
+        require(validApplicationId == applicationParam);
 
         bytes32 hash = keccak256(abi.encodePacked(address(this), LOCKED_NEW, fufiller, lockExpire, newOwner, timestamp, fee));
         hash = sha256(uf2Packed(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
@@ -81,7 +81,7 @@ contract idenity is p256Lib{
     //@Dev - This function allows the creation of a one time transaction via UF2 token, instead of authorizing an address [Note because spec256r is non native this will be much more expensive for multiple transactions from an address]
     function oneTimeCall(address payable _to, uint _value, bytes calldata _calldata, uint fee, bytes4 _counter, bytes32 applicationParam,  uint r, uint s) external returns(bool){
       require(uint32(_counter) > uint32(counter));
-      require(isIn(validApplicationId, applicationParam));
+      require(validApplicationId == applicationParam);
 
       bytes32 hash = keccak256(abi.encodePacked(address(this), ONETIME, _value, _to, fee, _calldata));
       hash = sha256(uf2Packed(applicationParam, userPresance, _counter, hash)); //TODO check against UF2 packing
@@ -101,7 +101,7 @@ contract idenity is p256Lib{
       require((msg.sender == fufiller) || (now > lockExpire));
       require(uint32(_counter) > uint32(counter));
       counter = _counter;
-      require(isIn(validApplicationId, applicationParam));
+      require(validApplicationId == applicationParam);
 
       if(oneTimeHashLock(fufiller, lockExpire, _value, _to, fee, _calldata, r, s, applicationParam)){
 
@@ -225,35 +225,9 @@ contract idenity is p256Lib{
       (msg.sender).transfer(fee); //Gives the implementor thier fee
     }
 
-    //@Dev - Add an applicationParam
-    function addAppParam(bytes32 applicationParam) external {
-        require(checkOwnership(msg.sender));
-        validApplicationId.push(applicationParam);
-    }
-
-    //@Dev - Remove an applicationParam
-    function removeAppParam(bytes32 applicationParam) external {
-        require(checkOwnership(msg.sender));
-        for(uint i =0 ; i < validApplicationId.length; i++){
-            if(validApplicationId[i] == applicationParam){
-                delete validApplicationId[i];
-            }
-        }
-    }
-
     //@Dev - Allows contracts to check if from is in the same idenity as owner
     function checkAddress(address _owner) external view{
         require(checkOwnership(_owner));
-    }
-
-    //@Dev - Unsorted array search, note that this array should never hold more than 5 elements
-    function isIn(bytes32[] memory array, bytes32 question) private pure returns(bool){
-        for(uint i =0 ; i < array.length; i++){
-            if(array[i] == question){
-                return(true);
-            }
-        }
-        return(false);
     }
 
     function uf2Packed(bytes32 _applicationParam, byte _userPresance, bytes4 _counter, bytes32 _hash) private pure returns(bytes memory _b){
