@@ -37,7 +37,7 @@ contract idenity is p256Lib{
     constructor(uint256 _public_qx, uint _public_qy, bytes32 applicationId, bytes4 _counter) public{
         public_qx = _public_qx;
         public_qy = _public_qy;
-        validApplicationId == applicationId;
+        validApplicationId = applicationId;
         counter = _counter;
         isOwner[msg.sender] = true; //We will assume that the person constructing the identity is the user, a purely meta transactional model may not do this
     }
