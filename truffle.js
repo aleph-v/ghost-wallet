@@ -21,7 +21,7 @@
        settings: {
          optimizer: {
            enabled: true, // Default: false
-           runs: 2000     // Default: 200
+           runs: 200000     // Default: 200
          }
        }
      }
